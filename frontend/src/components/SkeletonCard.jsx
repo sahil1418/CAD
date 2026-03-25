@@ -1,66 +1,65 @@
 import { motion } from 'framer-motion';
 
-const ICONS = { structural: '🏗️', manufacturing: '⚙️', compliance: '📋', intent: '🎯', cost: '💰' };
-const LABELS = { structural: 'Structural', manufacturing: 'Manufacturing', compliance: 'Compliance', intent: 'Intent', cost: 'Cost' };
+const META = {
+  structural:    { icon: '🏗️', label: 'Structural',    color: '#818cf8' },
+  manufacturing: { icon: '⚙️', label: 'Manufacturing', color: '#a78bfa' },
+  compliance:    { icon: '📋', label: 'Compliance',     color: '#22d3ee' },
+  intent:        { icon: '🎯', label: 'Intent',         color: '#34d399' },
+  cost:          { icon: '💰', label: 'Cost',           color: '#fbbf24' },
+};
 
 export default function SkeletonCard({ agentName, isActive }) {
+  const m = META[agentName] || { icon: '🤖', label: agentName, color: '#818cf8' };
+
   return (
-    <div className="glass-card p-5 relative overflow-hidden">
-      {/* Active pulse indicator */}
+    <div className="glass-card p-4 relative overflow-hidden">
       {isActive && (
-        <motion.div
-          className="absolute inset-0 rounded-2xl"
-          style={{ border: '2px solid var(--color-accent-indigo)', opacity: 0.3 }}
-          animate={{ opacity: [0.15, 0.4, 0.15] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-        />
+        <motion.div className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{ border: `1.5px solid ${m.color}`, opacity: 0.2 }}
+          animate={{ opacity: [0.1, 0.3, 0.1] }}
+          transition={{ duration: 1.5, repeat: Infinity }} />
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base"
-            style={{ background: 'rgba(255,255,255,0.04)' }}>
-            {ICONS[agentName] || '🤖'}
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style={{ background: `${m.color}12` }}>
+            {m.icon}
           </div>
-          <span className="text-sm font-semibold" style={{ color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
-            {LABELS[agentName] || agentName} Agent
-          </span>
+          <div>
+            <span className="text-xs font-semibold" style={{ color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)' }}>
+              {m.label}
+            </span>
+            <span className="text-[0.55rem] ml-1.5" style={{ color: 'var(--color-text-tertiary)' }}>Agent</span>
+          </div>
         </div>
         {isActive ? (
-          <motion.div
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.7rem] font-medium"
-            style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--color-accent-indigo)' }}
-            animate={{ opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 1.2, repeat: Infinity }}
-          >
-            <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-accent-indigo)' }} />
-            Analyzing...
+          <motion.div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[0.6rem] font-semibold"
+            style={{ background: `${m.color}15`, color: m.color }}
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 1.2, repeat: Infinity }}>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: m.color }} />
+            Analyzing
           </motion.div>
         ) : (
-          <div className="skeleton w-16 h-6 rounded-full" />
+          <div className="skeleton w-14 h-5 rounded-md" />
         )}
       </div>
 
-      {/* Skeleton content */}
-      <div className="space-y-2.5">
-        <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
-          <span>Confidence</span>
-          <div className="skeleton w-8 h-3 rounded" />
+      {/* Skeleton bars */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="conf-track flex-1">
+            {isActive ? (
+              <motion.div className="conf-fill conf-fill-default"
+                animate={{ width: ['0%', '55%', '25%', '45%'] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }} />
+            ) : <div className="conf-fill" style={{ width: 0 }} />}
+          </div>
+          <div className="skeleton w-7 h-3 rounded" />
         </div>
-        <div className="conf-track">
-          {isActive ? (
-            <motion.div
-              className="conf-fill"
-              animate={{ width: ['0%', '60%', '30%', '50%'] }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            />
-          ) : (
-            <div className="conf-fill" style={{ width: '0%' }} />
-          )}
-        </div>
-        <div className="skeleton w-full h-16 mt-2" />
-        <div className="skeleton w-3/4 h-4" />
+        <div className="skeleton w-full h-12" />
+        <div className="skeleton w-2/3 h-3" />
       </div>
     </div>
   );

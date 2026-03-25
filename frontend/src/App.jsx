@@ -1,14 +1,32 @@
 import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import FileUpload from './components/FileUpload';
+import { Upload, FileCheck, Cpu, ChevronRight, CheckCircle2, X } from 'lucide-react';
+import FileUploadComp from './components/FileUpload';
 import DesignBrief from './components/DesignBrief';
 import AgentCard from './components/AgentCard';
 import VerdictDashboard from './components/VerdictDashboard';
 import SkeletonCard from './components/SkeletonCard';
 import './index.css';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_BASE = API_BASE.replace(/^http/, 'ws');
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const WS = API.replace(/^http/, 'ws');
+
+// ── Toast hook ───────────────────────────────────────────────
+function useToast() {
+  const [toasts, setToasts] = useState([]);
+  const add = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+  };
+  return { toasts, add };
+}
+
+const TOAST_COLORS = {
+  success: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.15)', color: '#34d399' },
+  error: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.15)', color: '#fb7185' },
+  info: { bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.15)', color: '#818cf8' },
+};
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
@@ -21,51 +39,43 @@ function App() {
   const [error, setError] = useState('');
   const [geometrySummary, setGeometrySummary] = useState(null);
   const wsRef = useRef(null);
+  const { toasts, add: addToast } = useToast();
+
+  // Step: 0=none, 1=uploaded, 2=analyzing, 3=done
+  const step = results ? 3 : loading ? 2 : sessionId ? 1 : 0;
 
   const handleFileUpload = async (file) => {
-    setError('');
-    setResults(null);
-    setAgentResults([]);
-    setFileName(file.name);
-
+    setError(''); setResults(null); setAgentResults([]); setFileName(file.name);
     const formData = new FormData();
     formData.append('file', file);
     formData.append('design_brief', designBrief);
-
     try {
-      const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: formData });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload failed'); }
+      const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Upload failed'); }
       const data = await res.json();
       setSessionId(data.session_id);
       setGeometrySummary(data.geometry_summary);
-    } catch (err) {
-      setError(err.message);
-    }
+      addToast('File uploaded successfully', 'success');
+    } catch (err) { setError(err.message); addToast(err.message, 'error'); }
   };
 
   const handleAnalyze = useCallback(() => {
     if (!sessionId) { setError('Upload a CAD file first.'); return; }
-    setLoading(true);
-    setError('');
-    setResults(null);
-    setAgentResults([]);
-    setActiveAgent(null);
+    setLoading(true); setError(''); setResults(null); setAgentResults([]); setActiveAgent(null);
+    addToast('Starting agent pipeline...', 'info');
 
     try {
-      const ws = new WebSocket(`${WS_BASE}/api/ws/analyze/${sessionId}`);
+      const ws = new WebSocket(`${WS}/api/ws/analyze/${sessionId}`);
       wsRef.current = ws;
-
-      ws.onopen = () => { ws.send(JSON.stringify({ design_brief: designBrief })); };
-
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
+      ws.onopen = () => ws.send(JSON.stringify({ design_brief: designBrief }));
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
         if (msg.type === 'agent_start') setActiveAgent(msg.agent);
-        else if (msg.type === 'agent_result') { setAgentResults(prev => [...prev, msg.data]); setActiveAgent(null); }
+        else if (msg.type === 'agent_result') { setAgentResults(p => [...p, msg.data]); setActiveAgent(null); }
         else if (msg.type === 'consensus') setResults(msg.data);
-        else if (msg.type === 'complete') { setLoading(false); ws.close(); }
+        else if (msg.type === 'complete') { setLoading(false); addToast('Analysis complete!', 'success'); ws.close(); }
         else if (msg.type === 'error') { setError(msg.message); setLoading(false); ws.close(); }
       };
-
       ws.onerror = () => { ws.close(); fallbackRest(); };
       ws.onclose = () => { wsRef.current = null; };
     } catch { fallbackRest(); }
@@ -73,13 +83,13 @@ function App() {
 
   const fallbackRest = async () => {
     try {
-      const url = `${API_BASE}/api/analyze?session_id=${sessionId}${designBrief ? `&design_brief=${encodeURIComponent(designBrief)}` : ''}`;
+      const url = `${API}/api/analyze?session_id=${sessionId}${designBrief ? `&design_brief=${encodeURIComponent(designBrief)}` : ''}`;
       const res = await fetch(url, { method: 'POST' });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Analysis failed'); }
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Analysis failed'); }
       const data = await res.json();
-      setResults(data);
-      setAgentResults(data.agents || []);
-    } catch (err) { setError(err.message); }
+      setResults(data); setAgentResults(data.agents || []);
+      addToast('Analysis complete!', 'success');
+    } catch (err) { setError(err.message); addToast(err.message, 'error'); }
     finally { setLoading(false); }
   };
 
@@ -88,106 +98,95 @@ function App() {
   const pendingAgents = loading ? AGENT_ORDER.filter(a => !agentResults.find(r => r.agent === a)) : [];
 
   return (
-    <div className="min-h-screen px-4 py-6 md:px-8 lg:px-12 max-w-[1440px] mx-auto">
+    <div className="min-h-screen px-4 py-5 md:px-6 lg:px-10 max-w-[1480px] mx-auto">
 
-      {/* ── Decorative floating orbs ─────────────────────── */}
-      <div className="fixed top-20 left-10 w-72 h-72 rounded-full opacity-20 blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.3), transparent)' }} />
-      <div className="fixed bottom-20 right-10 w-60 h-60 rounded-full opacity-15 blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.25), transparent)' }} />
-
-      {/* ── Header ────────────────────────────────────────── */}
+      {/* ══ HERO HEADER ══════════════════════════════════════ */}
       <motion.header
-        initial={{ opacity: 0, y: -24 }}
+        initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="text-center mb-10 relative"
+        transition={{ duration: 0.5 }}
+        className="text-center mb-6 pt-2"
       >
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.15 }}
-          className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold tracking-widest uppercase mb-5"
+        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-tight mb-2"
           style={{
-            background: 'linear-gradient(135deg, rgba(34,211,238,0.08), rgba(99,102,241,0.08))',
-            color: 'var(--color-accent-cyan)',
-            border: '1px solid rgba(34,211,238,0.15)',
-            boxShadow: '0 0 20px rgba(34,211,238,0.06)',
-          }}
-        >
-          ⬡ Multi-Agent Intelligence
-        </motion.div>
-        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black leading-tight mb-3"
-          style={{
-            background: 'linear-gradient(135deg, #818cf8 0%, #a78bfa 30%, #22d3ee 70%, #34d399 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            filter: 'drop-shadow(0 0 30px rgba(99,102,241,0.2))',
+            background: 'linear-gradient(135deg, #818cf8 0%, #c084fc 35%, #22d3ee 70%, #34d399 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+            filter: 'drop-shadow(0 0 40px rgba(99,102,241,0.15))',
           }}>
           CAD Design Validator
         </h1>
-        <p className="text-sm md:text-base max-w-lg mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
-          5 specialized AI agents · consensus intelligence · real-time analysis
+        <p className="text-xs md:text-sm tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
+          AI-powered multi-agent design intelligence
         </p>
-        {/* Decorative line */}
-        <div className="mt-6 mx-auto w-48 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(129,140,248,0.3), transparent)' }} />
+
+        {/* Step Indicator */}
+        <div className="flex items-center justify-center gap-0 mt-5 max-w-xs mx-auto">
+          {[
+            { n: 1, label: 'Upload', Icon: Upload },
+            { n: 2, label: 'Analyze', Icon: Cpu },
+            { n: 3, label: 'Results', Icon: CheckCircle2 },
+          ].map((s, i) => (
+            <div key={s.n} className="flex items-center" style={{ flex: i < 2 ? 1 : undefined }}>
+              <div className="flex flex-col items-center gap-1">
+                <div className={`step-dot ${step >= s.n ? (step > s.n ? 'done' : 'active') : ''}`}>
+                  <s.Icon size={12} />
+                </div>
+                <span className="text-[0.6rem] tracking-wider uppercase" style={{ color: step >= s.n ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)' }}>{s.label}</span>
+              </div>
+              {i < 2 && <div className={`step-line mx-2 ${step > s.n ? 'done' : ''}`} />}
+            </div>
+          ))}
+        </div>
       </motion.header>
 
-      {/* ── Main Split Layout ─────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* ══ MAIN LAYOUT (35/65 split) ════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-        {/* LEFT: Upload + Brief + Button */}
-        <motion.div
-          initial={{ opacity: 0, x: -30 }}
+        {/* ── LEFT PANEL ──────────────────────────────────── */}
+        <motion.aside
+          initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.15, duration: 0.5 }}
-          className="lg:col-span-4 space-y-5"
+          transition={{ delay: 0.1, duration: 0.4 }}
+          className="lg:col-span-4 xl:col-span-4 space-y-4"
         >
-          <FileUpload onFileSelect={handleFileUpload} fileName={fileName} geometrySummary={geometrySummary} />
+          <FileUploadComp onFileSelect={handleFileUpload} fileName={fileName} geometrySummary={geometrySummary} />
           <DesignBrief value={designBrief} onChange={setDesignBrief} />
 
-          {/* Analyze Button */}
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            className="btn-analyze w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-3 cursor-pointer"
-            style={{ fontFamily: 'Inter, sans-serif' }}
+            whileHover={{ scale: 1.015 }}
+            whileTap={{ scale: 0.985 }}
+            className="btn-primary w-full py-3.5 rounded-xl text-sm flex items-center justify-center gap-2.5 cursor-pointer"
             onClick={handleAnalyze}
             disabled={!sessionId || loading}
           >
-            {loading ? (<><div className="spinner" /> Running Agent Pipeline...</>) : (<>🚀 Analyze Design</>)}
+            {loading ? (<><div className="spinner" /> Analyzing with AI agents...</>) : (<>Analyze Design <ChevronRight size={16} /></>)}
           </motion.button>
 
-          {/* Error */}
           <AnimatePresence>
             {error && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="warning-box p-4 flex gap-3 items-start text-sm"
-                style={{ background: 'rgba(251,113,133,0.08)', border: '1px solid rgba(251,113,133,0.2)' }}
-              >
-                <span className="text-lg">❌</span>
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-xl p-3.5 flex gap-2.5 items-start text-xs"
+                style={{ background: 'rgba(251,113,133,0.06)', border: '1px solid rgba(251,113,133,0.12)' }}>
+                <X size={14} style={{ color: '#fb7185', marginTop: 1, flexShrink: 0 }} />
                 <div>
-                  <div className="font-semibold" style={{ color: 'var(--color-accent-rose)' }}>Error</div>
-                  <p className="mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{error}</p>
+                  <span className="font-semibold" style={{ color: '#fb7185' }}>Error: </span>
+                  <span style={{ color: 'var(--color-text-secondary)' }}>{error}</span>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </motion.aside>
 
-        {/* RIGHT: Results Dashboard */}
-        <motion.div
-          initial={{ opacity: 0, x: 30 }}
+        {/* ── RIGHT PANEL ─────────────────────────────────── */}
+        <motion.main
+          initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.25, duration: 0.5 }}
-          className="lg:col-span-8 space-y-5"
+          transition={{ delay: 0.2, duration: 0.4 }}
+          className="lg:col-span-8 xl:col-span-8 space-y-4"
         >
-          {/* Verdict Banner */}
+          {/* Verdict */}
           <AnimatePresence>
             {results && (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <VerdictDashboard results={results} />
               </motion.div>
             )}
@@ -196,21 +195,21 @@ function App() {
           {/* Agent Cards */}
           {(agentsToShow.length > 0 || pendingAgents.length > 0) && (
             <div>
-              <h3 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-accent-indigo)', boxShadow: '0 0 8px var(--color-accent-indigo)' }} />
-                Agent Reports
-              </h3>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#818cf8', boxShadow: '0 0 6px #818cf8' }} />
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)' }}>Agent Reports</h3>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3.5">
                 <AnimatePresence mode="popLayout">
-                  {agentsToShow.map((agent, idx) => (
-                    <motion.div key={agent.agent} initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: idx * 0.08, type: 'spring', stiffness: 300, damping: 30 }} layout>
-                      <AgentCard agent={agent} />
+                  {agentsToShow.map((a, i) => (
+                    <motion.div key={a.agent} initial={{ opacity: 0, y: 16, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: i * 0.06, type: 'spring', stiffness: 350, damping: 30 }} layout>
+                      <AgentCard agent={a} />
                     </motion.div>
                   ))}
                 </AnimatePresence>
-                {pendingAgents.map((name) => (
-                  <motion.div key={`skeleton-${name}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <SkeletonCard agentName={name} isActive={activeAgent === name} />
+                {pendingAgents.map(n => (
+                  <motion.div key={`sk-${n}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <SkeletonCard agentName={n} isActive={activeAgent === n} />
                   </motion.div>
                 ))}
               </div>
@@ -220,23 +219,22 @@ function App() {
           {/* Priority Issues */}
           <AnimatePresence>
             {results?.issues?.length > 0 && (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-6">
-                <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-accent-rose)', boxShadow: '0 0 8px var(--color-accent-rose)' }} />
-                  Priority Issues ({results.issues.length})
-                </h3>
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#fb7185', boxShadow: '0 0 6px #fb7185' }} />
+                  <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)' }}>Priority Issues · {results.issues.length}</h3>
+                </div>
                 <div className="space-y-2">
-                  {results.issues.slice(0, 8).map((issue, idx) => (
-                    <motion.div key={idx} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + idx * 0.05 }}
-                      className={`issue-${(issue.severity || 'low').toLowerCase()} rounded-xl p-3 flex gap-3 text-sm`}
-                      style={{ background: 'var(--color-surface-glass)' }}>
-                      <span className={`badge-${issue.severity === 'HIGH' ? 'fail' : issue.severity === 'MEDIUM' ? 'warn' : 'pass'} px-2 py-0.5 rounded-lg text-xs font-bold uppercase self-start`}>
+                  {results.issues.slice(0, 6).map((issue, i) => (
+                    <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.04 }}
+                      className={`issue-${(issue.severity || 'low').toLowerCase()} rounded-lg p-3 flex gap-2.5 text-xs`}
+                      style={{ background: 'var(--color-bg-glass)' }}>
+                      <span className={`verdict-${issue.severity === 'HIGH' ? 'fail' : issue.severity === 'MEDIUM' ? 'warn' : 'pass'} px-2 py-0.5 rounded-md text-[0.6rem] font-bold uppercase self-start`}>
                         {issue.severity}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p style={{ color: 'var(--color-text-primary)' }}>{issue.message}</p>
-                        {issue.suggestion && <p className="text-xs mt-1 italic" style={{ color: 'var(--color-text-muted)' }}>💡 {issue.suggestion}</p>}
-                        {issue.source_agent && <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Agent: {issue.source_agent}</p>}
+                        <p>{issue.message}</p>
+                        {issue.suggestion && <p className="mt-1 italic" style={{ color: 'var(--color-text-tertiary)' }}>💡 {issue.suggestion}</p>}
                       </div>
                     </motion.div>
                   ))}
@@ -245,38 +243,88 @@ function App() {
             )}
           </AnimatePresence>
 
-          {/* Empty state */}
+          {/* ── EMPTY STATE — Rich Landing ─────────────────── */}
           {!loading && !results && agentsToShow.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="glass-card p-16 text-center relative overflow-hidden"
-            >
-              {/* Background decorative gradient */}
-              <div className="absolute inset-0 opacity-30" style={{
-                background: 'radial-gradient(circle at 50% 30%, rgba(99,102,241,0.08), transparent 60%)'
-              }} />
-              <div className="relative z-10">
-                <div className="text-6xl mb-5">📐</div>
-                <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-                  Ready to Analyze
-                </h3>
-                <p className="text-sm max-w-md mx-auto leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                  Upload a CAD file and provide a design brief. The multi-agent pipeline will validate your design with real-time streaming results.
-                </p>
-                <div className="mt-6 flex justify-center gap-3">
-                  {['🏗️ Structural', '⚙️ Mfg', '📋 Compliance', '🎯 Intent', '💰 Cost'].map((label) => (
-                    <span key={label} className="px-3 py-1.5 rounded-full text-xs font-medium"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--color-text-muted)' }}>
-                      {label}
-                    </span>
+            <div className="space-y-4">
+              {/* Hero empty */}
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+                className="glass-card p-10 text-center relative overflow-hidden">
+                <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 20%, rgba(99,102,241,0.06), transparent 60%)' }} />
+                <div className="relative z-10">
+                  <div className="text-4xl mb-3">⬡</div>
+                  <h3 className="text-lg font-bold mb-1.5">Intelligence Awaits</h3>
+                  <p className="text-xs max-w-md mx-auto leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                    Upload a CAD file and describe your design intent. Five specialized AI agents will validate your design with real-time streaming analysis.
+                  </p>
+                </div>
+              </motion.div>
+
+              {/* Agent pipeline preview */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {[
+                  { icon: '🏗️', name: 'Structural', desc: 'Load-bearing & stress analysis', color: '#818cf8' },
+                  { icon: '⚙️', name: 'Manufacturing', desc: 'DFM & machinability checks', color: '#a78bfa' },
+                  { icon: '📋', name: 'Compliance', desc: 'Standards & regulatory fit', color: '#22d3ee' },
+                  { icon: '🎯', name: 'Intent', desc: 'Design-brief alignment', color: '#34d399' },
+                  { icon: '💰', name: 'Cost', desc: 'Material & machining cost', color: '#fbbf24' },
+                ].map((a, i) => (
+                  <motion.div key={a.name} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 + i * 0.06 }}
+                    className="glass-card p-4 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0" style={{ background: `${a.color}15` }}>{a.icon}</div>
+                    <div>
+                      <div className="text-xs font-semibold">{a.name}</div>
+                      <div className="text-[0.65rem] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{a.desc}</div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* How it works */}
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}
+                className="glass-card p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22d3ee', boxShadow: '0 0 6px #22d3ee' }} />
+                  <span className="text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>How It Works</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { s: '01', t: 'Upload', d: 'STEP / OBJ / STL file', icon: '📤' },
+                    { s: '02', t: 'Analyze', d: 'Real-time agent pipeline', icon: '⚡' },
+                    { s: '03', t: 'Verdict', d: 'Consensus PASS / FAIL', icon: '🏆' },
+                  ].map(i => (
+                    <div key={i.s} className="text-center py-3 rounded-lg" style={{ background: 'var(--color-bg-glass)' }}>
+                      <div className="text-xl mb-1.5">{i.icon}</div>
+                      <div className="text-[0.55rem] font-bold uppercase tracking-widest mb-0.5" style={{ color: 'var(--color-accent-blue)' }}>Step {i.s}</div>
+                      <div className="text-xs font-semibold">{i.t}</div>
+                      <div className="text-[0.6rem] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{i.d}</div>
+                    </div>
                   ))}
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            </div>
           )}
-        </motion.div>
+        </motion.main>
+      </div>
+
+      {/* ══ TOAST NOTIFICATIONS ══════════════════════════════ */}
+      <div className="fixed bottom-5 right-5 z-50 space-y-2">
+        <AnimatePresence>
+          {toasts.map(t => {
+            const c = TOAST_COLORS[t.type] || TOAST_COLORS.info;
+            return (
+              <motion.div key={t.id}
+                initial={{ opacity: 0, x: 40, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 40 }}
+                className="toast flex items-center gap-2"
+                style={{ background: c.bg, borderColor: c.border, color: c.color }}
+              >
+                <CheckCircle2 size={14} />
+                <span>{t.message}</span>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
     </div>
   );

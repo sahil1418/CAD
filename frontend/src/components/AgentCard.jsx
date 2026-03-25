@@ -1,147 +1,135 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, AlertTriangle, Lightbulb, MapPin, Search } from 'lucide-react';
 
-const ICONS = { structural: '🏗️', manufacturing: '⚙️', compliance: '📋', intent: '🎯', cost: '💰' };
-const LABELS = { structural: 'Structural', manufacturing: 'Manufacturing', compliance: 'Compliance', intent: 'Intent', cost: 'Cost' };
-const COLORS = {
-  structural: 'rgba(99,102,241,0.15)',
-  manufacturing: 'rgba(139,92,246,0.15)',
-  compliance: 'rgba(34,211,238,0.15)',
-  intent: 'rgba(52,211,153,0.15)',
-  cost: 'rgba(251,191,36,0.15)',
+const META = {
+  structural:    { icon: '🏗️', label: 'Structural',     color: '#818cf8' },
+  manufacturing: { icon: '⚙️', label: 'Manufacturing',  color: '#a78bfa' },
+  compliance:    { icon: '📋', label: 'Compliance',      color: '#22d3ee' },
+  intent:        { icon: '🎯', label: 'Intent',          color: '#34d399' },
+  cost:          { icon: '💰', label: 'Cost',            color: '#fbbf24' },
 };
 
-function getBadgeClass(verdict) {
-  const v = (verdict || '').toUpperCase();
-  if (v === 'PASS') return 'badge-pass';
-  if (v === 'FAIL') return 'badge-fail';
-  return 'badge-warn';
+function verdictClass(v) {
+  const u = (v || '').toUpperCase();
+  return u === 'PASS' ? 'verdict-pass' : u === 'FAIL' ? 'verdict-fail' : 'verdict-warn';
+}
+
+function confColor(c) {
+  if (c >= 0.8) return 'conf-fill-green';
+  if (c >= 0.5) return 'conf-fill-amber';
+  if (c > 0) return 'conf-fill-rose';
+  return 'conf-fill-default';
 }
 
 export default function AgentCard({ agent }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const name = agent.agent || 'unknown';
+  const m = META[name] || { icon: '🤖', label: name, color: '#818cf8' };
   const verdict = (agent.verdict || 'WARN').toUpperCase();
   const confidence = agent.confidence || 0;
   const issues = agent.issues || [];
   const reasoning = agent.reasoning || '';
-  const costBreakdown = agent.cost_breakdown || null;
+  const cost = agent.cost_breakdown || null;
 
   return (
-    <div className="glass-card p-5 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base" style={{ background: COLORS[name] || 'rgba(255,255,255,0.06)' }}>
-            {ICONS[name] || '🤖'}
+    <div className="glass-card p-4 cursor-pointer select-none" onClick={() => issues.length > 0 && setOpen(!open)}>
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style={{ background: `${m.color}12` }}>
+            {m.icon}
           </div>
-          <span className="text-sm font-semibold">{LABELS[name] || name} Agent</span>
+          <div>
+            <span className="text-xs font-semibold">{m.label}</span>
+            <span className="text-[0.55rem] ml-1.5" style={{ color: 'var(--color-text-tertiary)' }}>Agent</span>
+          </div>
         </div>
-        <span className={`${getBadgeClass(verdict)} px-3 py-1 rounded-full text-[0.7rem] font-bold uppercase tracking-wider`}>
+        <span className={`${verdictClass(verdict)} px-2.5 py-1 rounded-md text-[0.6rem] font-bold uppercase tracking-wider`}>
           {verdict}
         </span>
       </div>
 
-      {/* Confidence Bar */}
-      <div className="mb-3">
-        <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          <span>Confidence</span>
-          <span className="font-semibold">{(confidence * 100).toFixed(0)}%</span>
+      {/* Confidence */}
+      <div className="flex items-center gap-3 mb-2.5">
+        <div className="conf-track flex-1">
+          <motion.div className={`conf-fill ${confColor(confidence)}`} initial={{ width: 0 }} animate={{ width: `${confidence * 100}%` }} transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }} />
         </div>
-        <div className="conf-track">
-          <motion.div
-            className="conf-fill"
-            initial={{ width: 0 }}
-            animate={{ width: `${confidence * 100}%` }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-          />
-        </div>
+        <span className="text-[0.65rem] font-semibold tabular-nums w-9 text-right" style={{ color: m.color }}>{(confidence * 100).toFixed(0)}%</span>
       </div>
 
-      {/* Reasoning */}
+      {/* Reasoning snippet */}
       {reasoning && (
-        <div className="text-xs leading-relaxed p-3 rounded-lg mb-3"
-          style={{ background: 'var(--color-surface-glass)', borderLeft: '3px solid var(--color-accent-indigo)', color: 'var(--color-text-secondary)' }}>
+        <p className="text-[0.65rem] leading-relaxed p-2.5 rounded-lg mb-2.5 line-clamp-2"
+          style={{ background: 'var(--color-bg-glass)', color: 'var(--color-text-secondary)', borderLeft: `2px solid ${m.color}25` }}>
           {reasoning}
-        </div>
+        </p>
       )}
 
-      {/* Cost Breakdown */}
-      {costBreakdown && (
-        <div className="grid grid-cols-4 gap-2 mb-3">
+      {/* Cost breakdown */}
+      {cost && (
+        <div className="grid grid-cols-4 gap-1.5 mb-2.5">
           {[
-            { label: 'Total', value: `$${costBreakdown.total}` },
-            { label: 'Material', value: `$${costBreakdown.material}` },
-            { label: 'Machining', value: `$${costBreakdown.machining}` },
-            { label: 'Difficulty', value: `${costBreakdown.difficulty_score}/10` },
-          ].map(({ label, value }) => (
-            <div key={label} className="text-center py-2 rounded-lg" style={{ background: 'var(--color-surface-glass)' }}>
-              <div className="text-xs font-bold" style={{ color: 'var(--color-accent-amber)' }}>{value}</div>
-              <div className="text-[0.6rem] uppercase" style={{ color: 'var(--color-text-muted)' }}>{label}</div>
+            { l: 'Total', v: `$${cost.total}` },
+            { l: 'Material', v: `$${cost.material}` },
+            { l: 'Machine', v: `$${cost.machining}` },
+            { l: 'Difficulty', v: `${cost.difficulty_score}/10` },
+          ].map(x => (
+            <div key={x.l} className="text-center py-1.5 rounded-md" style={{ background: 'var(--color-bg-glass)' }}>
+              <div className="text-[0.6rem] font-bold" style={{ color: '#fbbf24' }}>{x.v}</div>
+              <div className="text-[0.45rem] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{x.l}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Issues count + expand hint */}
-      <div className="flex items-center justify-between text-xs" style={{ color: 'var(--color-text-muted)' }}>
+      {/* Expand bar */}
+      <div className="flex items-center justify-between text-[0.65rem]" style={{ color: 'var(--color-text-tertiary)' }}>
         {issues.length > 0 ? (
-          <span>{issues.length} issue{issues.length > 1 ? 's' : ''} found</span>
+          <span className="flex items-center gap-1">
+            <AlertTriangle size={10} /> {issues.length} issue{issues.length > 1 ? 's' : ''}
+          </span>
         ) : (
-          <span className="flex items-center gap-1.5" style={{ color: 'var(--color-accent-emerald)' }}>✅ No issues</span>
+          <span style={{ color: '#34d399' }}>✓ No issues</span>
         )}
         {issues.length > 0 && (
-          <span className="transition-transform duration-200" style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+          <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <ChevronDown size={14} />
+          </motion.div>
         )}
       </div>
 
-      {/* Expandable Issues */}
+      {/* Expandable issues */}
       <AnimatePresence>
-        {expanded && issues.length > 0 && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="overflow-hidden"
-          >
-            <div className="mt-3 space-y-2">
-              {issues.map((issue, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className={`issue-${(issue.severity || 'low').toLowerCase()} rounded-lg p-3 text-xs`}
-                  style={{ background: 'var(--color-surface-glass)' }}
-                >
-                  <div className="flex gap-2 items-start">
-                    <span className={`${getBadgeClass(issue.severity === 'HIGH' ? 'FAIL' : issue.severity === 'MEDIUM' ? 'WARN' : 'PASS')} px-1.5 py-0.5 rounded text-[0.6rem] font-bold uppercase shrink-0`}>
+        {open && issues.length > 0 && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} className="overflow-hidden">
+            <div className="mt-2.5 space-y-1.5 pt-2.5" style={{ borderTop: '1px solid var(--color-border-default)' }}>
+              {issues.map((issue, i) => (
+                <motion.div key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
+                  className={`issue-${(issue.severity || 'low').toLowerCase()} rounded-lg p-2.5 text-[0.65rem]`} style={{ background: 'var(--color-bg-glass)' }}>
+                  <div className="flex items-start gap-1.5">
+                    <span className={`${verdictClass(issue.severity === 'HIGH' ? 'FAIL' : issue.severity === 'MEDIUM' ? 'WARN' : 'PASS')} px-1.5 py-0.5 rounded text-[0.5rem] font-bold uppercase shrink-0`}>
                       {issue.severity}
                     </span>
                     <div className="min-w-0">
-                      <p style={{ color: 'var(--color-text-primary)' }}>{issue.message}</p>
-                      {/* Explainability: Why this was flagged */}
+                      <p>{issue.message}</p>
                       {issue.contributing_feature && (
-                        <p className="mt-1" style={{ color: 'var(--color-accent-cyan)' }}>
-                          🔍 Feature: {issue.contributing_feature}
+                        <p className="mt-1 flex items-center gap-1" style={{ color: '#22d3ee' }}>
+                          <Search size={9} /> {issue.contributing_feature}
                         </p>
                       )}
                       {issue.reason && issue.reason !== issue.message && (
-                        <p className="mt-1 italic" style={{ color: 'var(--color-text-muted)' }}>
-                          💡 Why: {issue.reason}
+                        <p className="mt-1 flex items-center gap-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                          <Lightbulb size={9} /> {issue.reason}
                         </p>
                       )}
                       {issue.suggestion && (
-                        <p className="mt-1 italic" style={{ color: 'var(--color-text-muted)' }}>
-                          🛠️ Fix: {issue.suggestion}
-                        </p>
+                        <p className="mt-1 italic" style={{ color: 'var(--color-text-tertiary)' }}>🛠 {issue.suggestion}</p>
                       )}
-                      {/* Location / zone mapping */}
                       {issue.location && issue.location !== 'global' && (
-                        <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[0.6rem]"
-                          style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--color-accent-indigo)' }}>
-                          📍 {issue.location}
+                        <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[0.5rem]"
+                          style={{ background: 'rgba(99,102,241,0.06)', color: '#818cf8' }}>
+                          <MapPin size={8} /> {issue.location}
                         </span>
                       )}
                     </div>
