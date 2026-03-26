@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, MapPin } from 'lucide-react';
+import { ChevronDown, MapPin, Info } from 'lucide-react';
 
 const META = {
   structural:    { icon: '🏗️', label: 'Structural' },
@@ -20,11 +20,13 @@ function Badge({ verdict }) {
 
 export default function AgentCard({ agent }) {
   const [open, setOpen] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
   const name = agent.agent || 'unknown';
   const m = META[name] || { icon: '🤖', label: name };
   const confidence = agent.confidence || 0;
   const issues = agent.issues || [];
   const cost = agent.cost_breakdown;
+  const inferred = agent.inferred_intent;
 
   const barColor = confidence >= 0.8 ? 'bg-emerald-500' : confidence >= 0.5 ? 'bg-amber-500' : 'bg-red-500';
 
@@ -39,14 +41,32 @@ export default function AgentCard({ agent }) {
         <Badge verdict={agent.verdict} />
       </div>
 
-      {/* Confidence bar */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
+      {/* Inferred intent banner */}
+      {inferred && (
+        <div className="mb-3 px-3 py-2 rounded-md bg-amber-500/5 border border-amber-500/10 text-sm text-amber-400">
+          <span className="font-medium">Inferred intent:</span> {inferred}
+        </div>
+      )}
+
+      {/* Confidence bar with tooltip */}
+      <div className="flex items-center gap-3 mb-3 relative">
+        <div className="flex-1 h-2 rounded-full bg-border overflow-hidden">
           <motion.div className={`h-full rounded-full ${barColor}`}
             initial={{ width: 0 }} animate={{ width: `${confidence * 100}%` }}
             transition={{ duration: 0.8, ease: 'easeOut' }} />
         </div>
-        <span className="text-xs font-semibold text-muted-light w-10 text-right">{(confidence * 100).toFixed(0)}%</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-semibold text-muted-light w-10 text-right tabular-nums">{(confidence * 100).toFixed(0)}%</span>
+          <div className="relative"
+            onMouseEnter={() => setShowTooltip(true)} onMouseLeave={() => setShowTooltip(false)}>
+            <Info size={12} className="text-muted cursor-help" />
+            {showTooltip && (
+              <div className="absolute bottom-6 right-0 w-48 p-2 rounded-md bg-surface-overlay border border-border text-xs text-muted shadow-lg z-10">
+                Confidence reflects how certain this agent is about its assessment based on the design data.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Reasoning */}
@@ -63,7 +83,7 @@ export default function AgentCard({ agent }) {
             { l: 'Machining', v: `$${cost.machining}` },
             { l: 'Difficulty', v: `${cost.difficulty_score}/10` },
           ].map(x => (
-            <div key={x.l} className="text-center py-1.5 rounded-md bg-surface-overlay border border-border">
+            <div key={x.l} className="text-center py-2 rounded-md bg-surface-overlay border border-border">
               <p className="text-xs font-semibold text-amber-400">{x.v}</p>
               <p className="text-xs text-muted">{x.l}</p>
             </div>
@@ -90,7 +110,7 @@ export default function AgentCard({ agent }) {
             exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="mt-3 pt-3 border-t border-border space-y-2">
               {issues.map((issue, i) => (
-                <div key={i} className={`p-3 rounded-md bg-surface-overlay text-sm border-l-2
+                <div key={i} className={`p-3 rounded-md bg-surface-overlay text-sm border-l-2 transition-colors hover:bg-surface-overlay/80
                   ${issue.severity === 'HIGH' ? 'border-l-red-500' : issue.severity === 'MEDIUM' ? 'border-l-amber-500' : 'border-l-cyan-500'}`}>
                   <div className="flex items-start gap-2">
                     <Badge verdict={issue.severity === 'HIGH' ? 'FAIL' : issue.severity === 'MEDIUM' ? 'WARN' : 'PASS'} />
@@ -105,11 +125,16 @@ export default function AgentCard({ agent }) {
                       {issue.suggestion && (
                         <p className="mt-1 text-sm text-muted italic">🛠 {issue.suggestion}</p>
                       )}
-                      {issue.location && issue.location !== 'global' && (
-                        <span className="inline-flex items-center gap-1 mt-1.5 text-xs text-indigo-400">
-                          <MapPin size={10} /> {issue.location}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-3 mt-1.5">
+                        {issue.location && issue.location !== 'global' && (
+                          <span className="inline-flex items-center gap-1 text-xs text-indigo-400">
+                            <MapPin size={10} /> {issue.location}
+                          </span>
+                        )}
+                        {issue.priority_score && (
+                          <span className="text-xs text-muted tabular-nums">priority: {issue.priority_score}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

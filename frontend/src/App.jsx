@@ -163,7 +163,7 @@ export default function App() {
               <AnimatePresence>
                 {results && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                    <VerdictDashboard results={results} />
+                    <VerdictDashboard results={results} sessionId={sessionId} apiUrl={API} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -175,8 +175,8 @@ export default function App() {
                     <AnimatePresence mode="popLayout">
                       {agents.map((a, i) => (
                         <motion.div key={a.agent} layout
-                          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.05 }}>
+                          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.3, type: 'spring', stiffness: 300, damping: 25 }}>
                           <AgentCard agent={a} />
                         </motion.div>
                       ))}
