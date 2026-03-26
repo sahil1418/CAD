@@ -17,10 +17,11 @@ app = FastAPI(
 
 # ── CORS ───────────────────────────────────────────────────────────
 # CORS — allow env-configured frontend domain plus localhost for dev
-allowed_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+allowed_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
