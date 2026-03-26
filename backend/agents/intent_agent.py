@@ -39,19 +39,7 @@ class IntentAgent(BaseAgent):
         design_brief = shared_context.get("design_brief", "")
 
         if not design_brief.strip():
-            return {
-                "agent": self.agent_name,
-                "verdict": "WARN",
-                "confidence": 0.5,
-                "issues": [{
-                    "type": "missing_brief",
-                    "severity": "MEDIUM",
-                    "location": "input",
-                    "message": "No design brief provided — cannot assess design intent alignment.",
-                    "suggestion": "Provide a design brief describing the intended purpose and characteristics.",
-                }],
-                "reasoning": "No design brief was provided. Cannot evaluate design-to-intent alignment.",
-            }
+            return self._fallback_from_geometry(design_data)
 
         # Normalize brief text
         brief_lower = design_brief.lower()
@@ -157,3 +145,59 @@ class IntentAgent(BaseAgent):
         else:
             parts.append("No recognized intent keywords found.")
         return " ".join(parts)
+
+    def _fallback_from_geometry(self, design_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Infer intent from geometry when no design brief is provided."""
+        traits = []
+        complexity = design_data.get("complexity_score", 0)
+        volume = design_data.get("volume", 0)
+        faces = design_data.get("num_faces", 0)
+        thickness = design_data.get("avg_thickness", 0)
+        cavities = design_data.get("has_internal_cavities", False)
+
+        if complexity > 0.6:
+            traits.append("complex")
+        elif complexity < 0.3:
+            traits.append("simple")
+
+        if volume < 3000:
+            traits.append("compact/lightweight")
+        elif volume > 20000:
+            traits.append("large-scale")
+
+        if faces > 100:
+            traits.append("high-detail")
+        elif faces < 20:
+            traits.append("low-poly")
+
+        if thickness and thickness < 3:
+            traits.append("thin-walled")
+
+        if cavities:
+            traits.append("hollow/internal-cavity")
+
+        if not traits:
+            traits.append("general-purpose")
+
+        inferred = " ".join(traits) + " structural component"
+
+        # Confidence based on how many geometry signals we have
+        confidence = min(0.4 + len(traits) * 0.08, 0.7)
+
+        return {
+            "agent": self.agent_name,
+            "verdict": "WARN",
+            "confidence": round(confidence, 3),
+            "inferred_intent": inferred,
+            "issues": [{
+                "type": "inferred_intent",
+                "severity": "LOW",
+                "location": "input",
+                "message": f"No design brief provided — inferred intent: \"{inferred}\"",
+                "suggestion": "Provide a design brief for more accurate intent validation.",
+            }],
+            "reasoning": f"No design brief provided. Inferred intent from geometry: \"{inferred}\". "
+                         f"Geometry signals: complexity={complexity:.2f}, volume={volume:.0f}, faces={faces}, "
+                         f"avg_thickness={thickness:.1f}, cavities={cavities}.",
+        }
+

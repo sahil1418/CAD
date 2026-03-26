@@ -8,6 +8,7 @@ GET /results/{session_id} — retrieves stored results
 import os
 import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi.responses import Response
 from typing import Optional
 
 from services.cad_parser import parse_cad_file
@@ -15,6 +16,7 @@ from services.feature_extractor import normalize_design_data
 from services.shared_memory import shared_memory
 from services.orchestrator import run_pipeline
 from services.consensus import compute_consensus
+from services.report_generator import generate_report
 
 router = APIRouter()
 
@@ -127,6 +129,10 @@ async def analyze_design(session_id: str, design_brief: Optional[str] = None):
         "confidence": consensus["confidence"],
         "uncertainty": consensus.get("uncertainty", 0),
         "low_confidence_flag": consensus.get("low_confidence_flag", False),
+        "score_breakdown": consensus.get("score_breakdown", {}),
+        "worst_agent": consensus.get("worst_agent", ""),
+        "verdict_explanation": consensus.get("verdict_explanation", ""),
+        "recommended_fixes": consensus.get("recommended_fixes", []),
         "issues": consensus["priority_issues"],
         "top_3_issues": consensus.get("top_3_issues", []),
         "agents": consensus["agent_summary"],
@@ -160,6 +166,10 @@ async def get_results(session_id: str):
         "confidence": consensus["confidence"],
         "uncertainty": consensus.get("uncertainty", 0),
         "low_confidence_flag": consensus.get("low_confidence_flag", False),
+        "score_breakdown": consensus.get("score_breakdown", {}),
+        "worst_agent": consensus.get("worst_agent", ""),
+        "verdict_explanation": consensus.get("verdict_explanation", ""),
+        "recommended_fixes": consensus.get("recommended_fixes", []),
         "issues": consensus["priority_issues"],
         "top_3_issues": consensus.get("top_3_issues", []),
         "agents": consensus["agent_summary"],
@@ -167,3 +177,30 @@ async def get_results(session_id: str):
         "dissent_details": consensus["dissent_details"],
         "dissent_summary": consensus.get("dissent_summary", ""),
     }
+
+
+@router.get("/report/{session_id}")
+async def download_report(session_id: str):
+    """Generate and download a PDF report for a completed analysis."""
+    if not shared_memory.session_exists(session_id):
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+
+    context = shared_memory.get_context(session_id)
+    consensus = context.get("consensus")
+
+    if consensus is None:
+        raise HTTPException(status_code=422, detail="Analysis not yet completed.")
+
+    # Get original filename if available
+    file_path = context.get("file_path", "")
+    filename = os.path.basename(file_path) if file_path else ""
+
+    pdf_bytes = generate_report(consensus, filename=filename)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="cad_validation_report.pdf"',
+        },
+    )
