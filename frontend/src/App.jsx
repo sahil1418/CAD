@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Cpu, CheckCircle2, ChevronRight, X } from 'lucide-react';
+import { Upload, Cpu, CheckCircle2, ChevronRight, X, AlertTriangle } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import DesignBrief from './components/DesignBrief';
 import AgentCard from './components/AgentCard';
@@ -33,6 +33,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [geo, setGeo] = useState(null);
+  const [scaleWarnings, setScaleWarnings] = useState([]);
   const wsRef = useRef(null);
   const toast = useToast();
 
@@ -48,6 +49,8 @@ export default function App() {
       if (!r.ok) throw new Error((await r.json()).detail || 'Upload failed');
       const d = await r.json();
       setSessionId(d.session_id); setGeo(d.geometry_summary);
+      if (d.warnings?.length) setScaleWarnings(d.warnings);
+      else setScaleWarnings([]);
       toast.add('File uploaded', 'success');
     } catch (e) { setError(e.message); toast.add(e.message, 'error'); }
   };
@@ -94,6 +97,17 @@ export default function App() {
   /* ═══════════════════════════════════════════════════════ */
   return (
     <div className="min-h-screen flex flex-col">
+
+      {/* ── Scale warnings ─────────────────────────────── */}
+      {scaleWarnings.length > 0 && (
+        <div className="px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-300">
+            <span className="font-semibold">⚠ Geometry scale normalized</span>
+            {scaleWarnings.map((w, i) => <span key={i} className="block text-xs text-amber-400/80 mt-0.5">{w}</span>)}
+          </div>
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────── */}
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">

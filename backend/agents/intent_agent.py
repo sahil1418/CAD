@@ -156,30 +156,30 @@ class IntentAgent(BaseAgent):
         cavities = design_data.get("has_internal_cavities", False)
 
         if complexity > 0.6:
-            traits.append("complex")
+            traits.append("moderate complexity")
         elif complexity < 0.3:
             traits.append("simple")
+        else:
+            traits.append("moderate complexity")
 
         if volume < 3000:
-            traits.append("compact/lightweight")
+            traits.append("compact")
         elif volume > 20000:
-            traits.append("large-scale")
+            traits.append("medium-sized")
 
-        if faces > 100:
-            traits.append("high-detail")
-        elif faces < 20:
-            traits.append("low-poly")
+        if faces > 500:
+            traits.append("moderate detail")
 
         if thickness and thickness < 3:
             traits.append("thin-walled")
 
         if cavities:
-            traits.append("hollow/internal-cavity")
+            traits.append("hollow")
 
         if not traits:
             traits.append("general-purpose")
 
-        inferred = " ".join(traits) + " structural component"
+        inferred = " ".join(traits) + " mechanical component"
 
         # Confidence based on how many geometry signals we have
         confidence = min(0.4 + len(traits) * 0.08, 0.7)

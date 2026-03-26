@@ -85,8 +85,9 @@ class CostAgent(BaseAgent):
             })
             confidence -= 0.05
 
-        # ── Total cost ─────────────────────────────────────────────
+        # ── Total cost (clamped) ────────────────────────────────────
         total_cost = self.SETUP_COST + material_cost + machining_cost + finishing_cost
+        total_cost = min(total_cost, 100000.0)  # hard cap
 
         # ── Difficulty score ───────────────────────────────────────
         difficulty = self._compute_difficulty(complexity, has_cavities, sharp_edges, min_thickness)
@@ -159,7 +160,8 @@ class CostAgent(BaseAgent):
 
     def _estimate_machining_time(self, num_faces: int, complexity: float) -> float:
         """Estimate machining time in hours based on geometry complexity."""
-        base_time = max(0.1, num_faces / 200.0)  # rough: 200 faces per hour
+        capped_faces = min(num_faces, 500)  # cap to prevent explosion
+        base_time = max(0.1, capped_faces / 200.0)
 
         multiplier = 1.0
         for (lo, hi), mult in self.COMPLEXITY_TIME_MAP.items():

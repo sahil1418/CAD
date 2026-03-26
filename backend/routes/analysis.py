@@ -80,6 +80,8 @@ async def upload_cad_file(file: UploadFile = File(...), design_brief: str = Form
             "bounding_box": normalized.get("bounding_box", {}),
             "complexity_score": normalized.get("complexity_score", 0),
         },
+        "scale_info": normalized.get("scale_info", {}),
+        "warnings": normalized.get("warnings", []),
     }
 
 
