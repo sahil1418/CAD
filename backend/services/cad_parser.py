@@ -21,6 +21,8 @@ def parse_cad_file(filepath: str) -> Dict[str, Any]:
         return _parse_obj(filepath)
     elif ext in (".stp", ".step"):
         return _parse_step(filepath)
+    elif ext in (".stl",):
+        return _parse_stl(filepath)
     else:
         # Fallback: generate synthetic geometry for demo/testing
         return _generate_synthetic_geometry(filepath)
@@ -103,6 +105,72 @@ def _parse_step(filepath: str) -> Dict[str, Any]:
         "normals": normals,
         "num_vertices": len(vertices),
         "num_faces": face_count,
+        "raw_file": filepath,
+    }
+
+
+def _parse_stl(filepath: str) -> Dict[str, Any]:
+    """
+    Parse an STL file (binary or ASCII).
+    Binary STL: 80-byte header + 4-byte triangle count + 50 bytes per triangle.
+    ASCII STL: text-based with 'facet normal' and 'vertex' lines.
+    """
+    vertices = []
+    faces = []
+    normals = []
+
+    with open(filepath, "rb") as f:
+        header = f.read(80)
+        # Check if ASCII by looking for 'solid' at start (heuristic)
+        is_ascii = header.strip().startswith(b"solid") and b"\x00" not in header
+
+    if is_ascii:
+        # ASCII STL parsing
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            current_normal = None
+            face_verts = []
+            for line in f:
+                line = line.strip()
+                if line.startswith("facet normal"):
+                    parts = line.split()
+                    current_normal = [float(parts[2]), float(parts[3]), float(parts[4])]
+                    normals.append(current_normal)
+                elif line.startswith("vertex"):
+                    parts = line.split()
+                    v = [float(parts[1]), float(parts[2]), float(parts[3])]
+                    vertices.append(v)
+                    face_verts.append(len(vertices) - 1)
+                elif line.startswith("endfacet"):
+                    if len(face_verts) >= 3:
+                        faces.append(face_verts[:3])
+                    face_verts = []
+    else:
+        # Binary STL parsing
+        import struct
+        with open(filepath, "rb") as f:
+            f.read(80)  # skip header
+            num_triangles = struct.unpack("<I", f.read(4))[0]
+            for i in range(num_triangles):
+                data = f.read(50)  # 12 floats + 2 byte attribute
+                if len(data) < 50:
+                    break
+                vals = struct.unpack("<12fH", data)
+                normals.append([vals[0], vals[1], vals[2]])
+                v_idx = len(vertices)
+                vertices.append([vals[3], vals[4], vals[5]])
+                vertices.append([vals[6], vals[7], vals[8]])
+                vertices.append([vals[9], vals[10], vals[11]])
+                faces.append([v_idx, v_idx + 1, v_idx + 2])
+
+    vertices_np = np.array(vertices) if vertices else np.zeros((0, 3))
+
+    return {
+        "format": "STL",
+        "vertices": vertices_np.tolist(),
+        "faces": faces,
+        "normals": normals,
+        "num_vertices": len(vertices),
+        "num_faces": len(faces),
         "raw_file": filepath,
     }
 

@@ -3,7 +3,7 @@ Compliance Agent — Rule-based checks for tolerances, dimensions,
 and standards conformance (ISO 2768 defaults).
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from agents.base_agent import BaseAgent
 
 
@@ -146,7 +146,7 @@ class ComplianceAgent(BaseAgent):
                 })
         return issues
 
-    def _get_iso_tolerance(self, dimension: float) -> float | None:
+    def _get_iso_tolerance(self, dimension: float) -> Optional[float]:
         """Look up ISO 2768 medium tolerance for a given dimension."""
         for (lo, hi), tol in self.ISO_2768_MEDIUM.items():
             if lo <= dimension < hi:

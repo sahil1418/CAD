@@ -8,23 +8,11 @@ import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Optional
 
-from agents.structural_agent import StructuralAgent
-from agents.manufacturing_agent import ManufacturingAgent
-from agents.compliance_agent import ComplianceAgent
-from agents.intent_agent import IntentAgent
-from agents.cost_agent import CostAgent
+from services.orchestrator import AGENT_PIPELINE
 from services.shared_memory import shared_memory
 from services.consensus import compute_consensus
 
 router = APIRouter()
-
-AGENT_PIPELINE = [
-    StructuralAgent(),
-    ManufacturingAgent(),
-    ComplianceAgent(),
-    IntentAgent(),
-    CostAgent(),
-]
 
 
 @router.websocket("/ws/analyze/{session_id}")
@@ -66,6 +54,8 @@ async def websocket_analyze(websocket: WebSocket, session_id: str):
         except (asyncio.TimeoutError, json.JSONDecodeError):
             pass
 
+        # Clear stale results from any previous analysis run
+        shared_memory.reset_for_reanalysis(session_id)
         shared_memory.update_context(session_id, "status", "analyzing")
         total = len(AGENT_PIPELINE)
         results = []

@@ -23,6 +23,8 @@ router = APIRouter()
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 
 @router.post("/upload")
 async def upload_cad_file(file: UploadFile = File(...), design_brief: str = Form(default="")):
@@ -46,6 +48,11 @@ async def upload_cad_file(file: UploadFile = File(...), design_brief: str = Form
     filepath = os.path.join(UPLOAD_DIR, f"{session_id}{ext}")
     try:
         content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large ({len(content) / 1024 / 1024:.1f}MB). Maximum allowed: {MAX_FILE_SIZE / 1024 / 1024:.0f}MB."
+            )
         with open(filepath, "wb") as f:
             f.write(content)
     except Exception as e:
@@ -106,6 +113,9 @@ async def analyze_design(session_id: str, design_brief: Optional[str] = None):
         raise HTTPException(status_code=422, detail="No normalized design data found. Re-upload the file.")
 
     shared_memory.update_context(session_id, "status", "analyzing")
+
+    # Clear stale results from any previous analysis run
+    shared_memory.reset_for_reanalysis(session_id)
 
     # Run agent pipeline
     try:

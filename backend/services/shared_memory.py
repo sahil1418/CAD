@@ -4,6 +4,7 @@ In-memory dict store keyed by session_id.
 Agents read from and write to this shared context.
 """
 
+import copy
 from typing import Dict, Any
 import threading
 
@@ -41,9 +42,9 @@ class SharedMemory:
         return self._store[session_id]
 
     def get_context(self, session_id: str) -> Dict[str, Any]:
-        """Get the full context for a session."""
+        """Get a deep copy of the full context for a session (thread-safe)."""
         with self._lock:
-            return self._store.get(session_id, {})
+            return copy.deepcopy(self._store.get(session_id, {}))
 
     def update_context(self, session_id: str, key: str, value: Any):
         """Update a specific key in session context."""
@@ -74,6 +75,15 @@ class SharedMemory:
             if session_id in self._store:
                 self._store[session_id]["consensus"] = consensus
                 self._store[session_id]["status"] = "completed"
+
+    def reset_for_reanalysis(self, session_id: str):
+        """Clear previous agent results before re-running the pipeline."""
+        with self._lock:
+            if session_id in self._store:
+                self._store[session_id]["previous_results"] = []
+                self._store[session_id]["agent_outputs"] = {}
+                self._store[session_id]["consensus"] = None
+                self._store[session_id]["status"] = "re-analyzing"
 
 
 # Singleton instance
